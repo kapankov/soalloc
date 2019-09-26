@@ -1,97 +1,133 @@
 #pragma once
 
+#include <cstdlib>
 #include <vector>
+//#include <bitset>
 
 #ifndef DEFAULT_CHUNK_SIZE
-#define DEFAULT_CHUNK_SIZE 65536	//4096
-#endif
-
-#ifndef POOL_CACHE_CAPACITY
-#define POOL_CACHE_CAPACITY 16
+#define DEFAULT_CHUNK_SIZE 4096
 #endif
 
 #ifndef MAX_SMALL_OBJECT_SIZE
-#define MAX_SMALL_OBJECT_SIZE 128
+#define MAX_SMALL_OBJECT_SIZE 256
 #endif
+
+////////////////////////////////////////////////////////////////////////////////
+// class FixedAllocator
+// Offers services for allocating fixed-sized objects
+////////////////////////////////////////////////////////////////////////////////
 
 class FixedAllocator
 {
-private:
 	struct Chunk
 	{
-		void Init(size_t blockSize, unsigned char blocks);
-		void* Allocate(size_t blockSize);
-		void Deallocate(void* p, size_t blockSize);
-		void Reset(size_t blockSize, unsigned char blocks);
+		/** Initializes a just-constructed Chunk.
+		 @param blockSize Number of bytes per block.
+		 @param blocks Number of blocks per Chunk.
+		 @return True for success, false for failure.
+		 */
+
+		void Init(std::size_t blockSize, unsigned char blocks);
+		/** Allocate a block within the Chunk.  Complexity is always O(1), and
+		 this will never throw.  Does not actually "allocate" by calling
+		 malloc, new, or any other function, but merely adjusts some internal
+		 indexes to indicate an already allocated block is no longer available.
+		 @return Pointer to block within Chunk.
+		 */
+
+		void* Allocate(std::size_t blockSize);
+		/** Deallocate a block within the Chunk. Complexity is always O(1), and
+		 this will never throw.  For efficiency, this assumes the address is
+		 within the block and aligned along the correct byte boundary.  An
+		 assertion checks the alignment, and a call to HasBlock is done from
+		 within VicinityFind.  Does not actually "deallocate" by calling free,
+		 delete, or other function, but merely adjusts some internal indexes to
+		 indicate a block is now available.
+		 */
+		void Deallocate(void* p, std::size_t blockSize);
+
+		/** Resets the Chunk back to pristine values. The available count is
+		 set back to zero, and the first available index is set to the zeroth
+		 block.  The stealth indexes inside each block are set to point to the
+		 next block. This assumes the Chunk's data was already using Init.
+		 */
+		void Reset(std::size_t blockSize, unsigned char blocks);
+
+		/// Releases the allocated block of memory.
 		void Release();
-
-		unsigned char* m_pData;
-		unsigned char m_firstAvailableBlock;
-		unsigned char m_blocksAvailable;
+		/// Pointer to array of allocated blocks.
+		unsigned char* pData_;
+		/// Index of first empty block.
+		unsigned char firstAvailableBlock_;
+		/// Count of empty blocks.
+		unsigned char blocksAvailable_;
 	};
-
 	// Internal functions        
 	void DoDeallocate(void* p);
-
 	Chunk* VicinityFind(void* p);
 
-	// Data
-	std::size_t m_blockSize;
-	unsigned char m_numBlocks;
+	// Data 
+	std::size_t blockSize_;
+	unsigned char numBlocks_;
 	typedef std::vector<Chunk> Chunks;
-	Chunks m_chunks;
-	Chunk* m_allocChunk;
-	Chunk* m_deallocChunk;
+	Chunks chunks_;
+	Chunk* allocChunk_;
+	Chunk* deallocChunk_;
 	// For ensuring proper copy semantics
-	mutable const FixedAllocator* m_prev;
-	mutable const FixedAllocator* m_next;
-	// cache
-	std::vector<void*> m_cache;
-	int m_cache_delguard;
+	mutable const FixedAllocator* prev_;
+	mutable const FixedAllocator* next_;
 
 public:
 	// Create a FixedAllocator able to manage blocks of 'blockSize' size
-	explicit FixedAllocator(std::size_t blockSize);
-
-	FixedAllocator(const FixedAllocator& rhs);
-
-	FixedAllocator& operator=(const FixedAllocator& rhs);
-
+	explicit FixedAllocator(std::size_t blockSize = 0);
+	FixedAllocator(const FixedAllocator&);
+	FixedAllocator& operator=(const FixedAllocator&);
 	~FixedAllocator();
 
 	void Swap(FixedAllocator& rhs);
 
 	// Allocate a memory block
 	void* Allocate();
-
 	// Deallocate a memory block previously allocated with Allocate()
 	// (if that's not the case, the behavior is undefined)
 	void Deallocate(void* p);
-
 	// Returns the block size with which the FixedAllocator was initialized
 	std::size_t BlockSize() const
 	{
-		return m_blockSize;
+		return blockSize_;
+	}
+	// Comparison operator for sorting 
+	bool operator<(std::size_t rhs) const
+	{
+		return BlockSize() < rhs;
 	}
 };
 
-class PoolManager
+////////////////////////////////////////////////////////////////////////////////
+// class SmallObjAllocator
+// Offers services for allocating small-sized objects
+////////////////////////////////////////////////////////////////////////////////
+
+class SmallObjAllocator
 {
 public:
-	PoolManager(
+	SmallObjAllocator(
+		std::size_t chunkSize = DEFAULT_CHUNK_SIZE,
 		std::size_t maxObjectSize = MAX_SMALL_OBJECT_SIZE);
 
-	PoolManager(const PoolManager&) = delete;
-	PoolManager& operator=(const PoolManager&) = delete;
+	void* Allocate(std::size_t numBytes);
+	void Deallocate(void* p, std::size_t size);
 
-	void* Allocate(std::size_t n);
-	void Deallocate(void* p, std::size_t n);
 private:
+	SmallObjAllocator(const SmallObjAllocator&);
+	SmallObjAllocator& operator=(const SmallObjAllocator&);
+
 	typedef std::vector<FixedAllocator> Pool;
-	Pool m_pool;
-	FixedAllocator* m_pLastAlloc;
-	FixedAllocator* m_pLastDealloc;
-	std::size_t m_maxObjectSize;
+	Pool pool_;
+	FixedAllocator* pLastAlloc_;
+	FixedAllocator* pLastDealloc_;
+	std::size_t chunkSize_;
+	std::size_t maxObjectSize_;
 };
 
 // Singleton
@@ -112,7 +148,7 @@ public:
 	}
 };
 
-using PoolAllocator = Singleton<PoolManager>;
+using PoolAllocator = Singleton<SmallObjAllocator>;	//Singleton<PoolManager>;
 
 template<typename T>
 class soalloc
@@ -147,7 +183,14 @@ public:
 	static void* operator new (std::size_t size, const std::nothrow_t& nothrow_value) noexcept // nothrow
 	{
 //		std::cout << "nothrow operator new (" << typeid(T).name() << "), size: " << size << std::endl;
-		return alloc(size, true);
+		try
+		{
+			return alloc(size, true);
+		}
+		catch (...)
+		{
+			return nullptr;
+		}
 	}
 	static void operator delete (void* ptr, const std::nothrow_t& nothrow_constant) noexcept
 	{
