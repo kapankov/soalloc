@@ -1,8 +1,26 @@
+/*******************************************************************************
+
+	Allocator for small objects
+	The idea and partially the code is borrowed from the book of Andrei
+	Alexandrescu "Modern C++ Design: Generic Programming and Design Patterns 
+	Applied". Copyright (c) 2001. Addison-Wesley.
+	+ small performance improvements and bug fixes
+
+	Multithreaded work has limitations: 
+	1 - deleting an object should be performed from the same thread
+	2 - you cannot delete the same object twice
+
+*******************************************************************************/
+
 #pragma once
 
 #include <cstdlib>
 #include <vector>
-//#include <bitset>
+#include <map>
+#include <thread>
+#include <mutex>
+#include <shared_mutex>
+
 
 #ifndef DEFAULT_CHUNK_SIZE
 #define DEFAULT_CHUNK_SIZE 4096
@@ -21,64 +39,33 @@ class FixedAllocator
 {
 	struct Chunk
 	{
-		/** Initializes a just-constructed Chunk.
-		 @param blockSize Number of bytes per block.
-		 @param blocks Number of blocks per Chunk.
-		 @return True for success, false for failure.
-		 */
-
 		void Init(std::size_t blockSize, unsigned char blocks);
-		/** Allocate a block within the Chunk.  Complexity is always O(1), and
-		 this will never throw.  Does not actually "allocate" by calling
-		 malloc, new, or any other function, but merely adjusts some internal
-		 indexes to indicate an already allocated block is no longer available.
-		 @return Pointer to block within Chunk.
-		 */
 
 		void* Allocate(std::size_t blockSize);
-		/** Deallocate a block within the Chunk. Complexity is always O(1), and
-		 this will never throw.  For efficiency, this assumes the address is
-		 within the block and aligned along the correct byte boundary.  An
-		 assertion checks the alignment, and a call to HasBlock is done from
-		 within VicinityFind.  Does not actually "deallocate" by calling free,
-		 delete, or other function, but merely adjusts some internal indexes to
-		 indicate a block is now available.
-		 */
+
 		void Deallocate(void* p, std::size_t blockSize);
 
-		/** Resets the Chunk back to pristine values. The available count is
-		 set back to zero, and the first available index is set to the zeroth
-		 block.  The stealth indexes inside each block are set to point to the
-		 next block. This assumes the Chunk's data was already using Init.
-		 */
+
 		void Reset(std::size_t blockSize, unsigned char blocks);
 
-		/// Releases the allocated block of memory.
 		void Release();
-		/// Pointer to array of allocated blocks.
-		unsigned char* pData_;
-		/// Index of first empty block.
-		unsigned char firstAvailableBlock_;
-		/// Count of empty blocks.
-		unsigned char blocksAvailable_;
+		unsigned char* m_pData;
+		unsigned char m_firstAvailableBlock;
+		unsigned char m_blocksAvailable;
 	};
-	// Internal functions        
 	void DoDeallocate(void* p);
 	Chunk* VicinityFind(void* p);
 
-	// Data 
 	std::size_t blockSize_;
 	unsigned char numBlocks_;
 	typedef std::vector<Chunk> Chunks;
 	Chunks chunks_;
 	Chunk* allocChunk_;
 	Chunk* deallocChunk_;
-	// For ensuring proper copy semantics
 	mutable const FixedAllocator* prev_;
 	mutable const FixedAllocator* next_;
 
 public:
-	// Create a FixedAllocator able to manage blocks of 'blockSize' size
 	explicit FixedAllocator(std::size_t blockSize = 0);
 	FixedAllocator(const FixedAllocator&);
 	FixedAllocator& operator=(const FixedAllocator&);
@@ -86,17 +73,12 @@ public:
 
 	void Swap(FixedAllocator& rhs);
 
-	// Allocate a memory block
 	void* Allocate();
-	// Deallocate a memory block previously allocated with Allocate()
-	// (if that's not the case, the behavior is undefined)
 	void Deallocate(void* p);
-	// Returns the block size with which the FixedAllocator was initialized
 	std::size_t BlockSize() const
 	{
 		return blockSize_;
 	}
-	// Comparison operator for sorting 
 	bool operator<(std::size_t rhs) const
 	{
 		return BlockSize() < rhs;
@@ -148,16 +130,39 @@ public:
 	}
 };
 
-using PoolAllocator = Singleton<SmallObjAllocator>;	//Singleton<PoolManager>;
+using SmallObjAllocatorMap = std::map<std::thread::id, SmallObjAllocator>;
+using PoolAllocator = Singleton<std::pair<SmallObjAllocatorMap,std::shared_mutex>>;
 
 template<typename T>
 class soalloc
 {
-private:
+	static SmallObjAllocator* getSmallObjAllocator()
+	{
+		SmallObjAllocator* pSmallObjAllocator = nullptr;
+		auto& map = PoolAllocator::GetInstance().first;
+		std::shared_mutex& mutex = PoolAllocator::GetInstance().second;
+		std::thread::id id = std::this_thread::get_id();
+		{
+			std::shared_lock<std::shared_mutex> lock(mutex);
+			auto it = map.find(id);
+			if (it != map.end())
+				pSmallObjAllocator = &it->second;
+		}
+		if (!pSmallObjAllocator)
+		{
+			std::unique_lock<std::shared_mutex> lock(mutex);
+			pSmallObjAllocator = &map[id];
+		}
+		return pSmallObjAllocator;
+	}
+
 	static void* alloc(size_t size, bool nothrow = false)
 	{
 		if (size == 0) size = 1;
-		void* ptr = PoolAllocator::GetInstance().Allocate(size);
+
+		SmallObjAllocator* pSmallObjAllocator = getSmallObjAllocator();
+
+		void* ptr = pSmallObjAllocator->Allocate(size); //pSmallObjAllocator ? pSmallObjAllocator->Allocate(size) : nullptr;
 		if (ptr == nullptr && !nothrow)
 		{
 			std::bad_alloc exception;
@@ -167,7 +172,11 @@ private:
 	}
 	static void free(void* ptr) noexcept
 	{
-		if (ptr) PoolAllocator::GetInstance().Deallocate(ptr, sizeof(T));
+		if (ptr)
+		{
+			if (SmallObjAllocator * pSmallObjAllocator = getSmallObjAllocator())
+				pSmallObjAllocator->Deallocate(ptr, sizeof(T));
+		}
 	}
 public:
 	static void* operator new(size_t size) // throwing
