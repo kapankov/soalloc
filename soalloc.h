@@ -131,22 +131,18 @@ using PoolAllocator = Singleton<SmallObjAllocator>;
 template<typename T>
 class soalloc
 {
-	static SmallObjAllocator* getSmallObjAllocator()
-	{
-		return &PoolAllocator::GetInstance();
-	}
-
 	static void* alloc(size_t size, bool nothrow = false)
 	{
 		if (size == 0) size = 1;
-
-		SmallObjAllocator* pSmallObjAllocator = getSmallObjAllocator();
-
-		void* ptr = pSmallObjAllocator->Allocate(size); //pSmallObjAllocator ? pSmallObjAllocator->Allocate(size) : nullptr;
-		if (ptr == nullptr && !nothrow)
+		void* ptr = nullptr;
+		if (SmallObjAllocator* pSmallObjAllocator = &PoolAllocator::GetInstance())
 		{
-			std::bad_alloc exception;
-			throw exception;
+			ptr = pSmallObjAllocator->Allocate(size); //pSmallObjAllocator ? pSmallObjAllocator->Allocate(size) : nullptr;
+			if (ptr == nullptr && !nothrow)
+			{
+				std::bad_alloc exception;
+				throw exception;
+			}
 		}
 		return ptr;
 	}
@@ -154,7 +150,7 @@ class soalloc
 	{
 		if (ptr)
 		{
-			if (SmallObjAllocator * pSmallObjAllocator = getSmallObjAllocator())
+			if (SmallObjAllocator * pSmallObjAllocator = &PoolAllocator::GetInstance())
 				pSmallObjAllocator->Deallocate(ptr, sizeof(T));
 		}
 	}

@@ -199,22 +199,9 @@ void* FixedAllocator::Allocate()
 {
 	if (allocChunk_ == nullptr || allocChunk_->m_blocksAvailable == 0)
 	{
-//		Chunks::iterator i = chunks_.begin();
-//		for (;; ++i)
 		allocChunk_ = nullptr;
 		for(auto const &i: chunks_)
 		{
-/*			if (i == chunks_.end())
-			{
-				// Initialize
-				chunks_.reserve(chunks_.size() + 1);
-				Chunk newChunk;
-				newChunk.Init(blockSize_, numBlocks_);
-				chunks_.push_back(newChunk);
-				allocChunk_ = &chunks_.back();
-				deallocChunk_ = &chunks_.front();
-				break;
-			}	see below... */
 			if (i.m_blocksAvailable > 0)
 			{
 				allocChunk_ = const_cast<Chunk*>(&i);
@@ -223,12 +210,10 @@ void* FixedAllocator::Allocate()
 		}
 		if (allocChunk_ == nullptr)
 		{
-			// Initialize
-			chunks_.reserve(chunks_.size() + 1);
-			Chunk newChunk;
-			newChunk.Init(blockSize_, numBlocks_);
-			chunks_.push_back(newChunk);
+			chunks_.emplace_back(Chunk{});
 			allocChunk_ = &chunks_.back();
+			// Initialize
+			allocChunk_->Init(blockSize_, numBlocks_);
 			deallocChunk_ = &chunks_.front();
 		}
 
@@ -382,8 +367,6 @@ SmallObjAllocator::SmallObjAllocator(
 
 void* SmallObjAllocator::Allocate(std::size_t numBytes)
 {
-//	std::lock_guard<std::mutex> lguard(m_mutex);
-
 	if (numBytes > maxObjectSize_) return operator new(numBytes);
 
 	if (pLastAlloc_ && pLastAlloc_->BlockSize() == numBytes)
@@ -393,7 +376,7 @@ void* SmallObjAllocator::Allocate(std::size_t numBytes)
 	Pool::iterator i = std::lower_bound(pool_.begin(), pool_.end(), numBytes);
 	if (i == pool_.end() || i->BlockSize() != numBytes)
 	{
-		i = pool_.insert(i, FixedAllocator(numBytes));
+		i = pool_.emplace(i, FixedAllocator(numBytes));
 		pLastDealloc_ = &*pool_.begin();
 	}
 	pLastAlloc_ = &*i;
@@ -408,7 +391,6 @@ void* SmallObjAllocator::Allocate(std::size_t numBytes)
 
 void SmallObjAllocator::Deallocate(void* p, std::size_t numBytes)
 {
-//	std::lock_guard<std::mutex> lguard(m_mutex);
 	if (numBytes > maxObjectSize_) return operator delete(p);
 
 	if (pLastDealloc_ && pLastDealloc_->BlockSize() == numBytes)
