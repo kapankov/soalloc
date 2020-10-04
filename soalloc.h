@@ -14,12 +14,8 @@
 
 #pragma once
 
-#include <cstdlib>
 #include <vector>
 #include <map>
-#include <thread>
-#include <mutex>
-#include <shared_mutex>
 
 
 #ifndef DEFAULT_CHUNK_SIZE
@@ -125,35 +121,19 @@ private:
 public:
 	static T& GetInstance() noexcept
 	{
-		static T s;
+		thread_local  T s;
 		return s;
 	}
 };
 
-using SmallObjAllocatorMap = std::map<std::thread::id, SmallObjAllocator>;
-using PoolAllocator = Singleton<std::pair<SmallObjAllocatorMap,std::shared_mutex>>;
+using PoolAllocator = Singleton<SmallObjAllocator>;
 
 template<typename T>
 class soalloc
 {
 	static SmallObjAllocator* getSmallObjAllocator()
 	{
-		SmallObjAllocator* pSmallObjAllocator = nullptr;
-		auto& map = PoolAllocator::GetInstance().first;
-		std::shared_mutex& mutex = PoolAllocator::GetInstance().second;
-		std::thread::id id = std::this_thread::get_id();
-		{
-			std::shared_lock<std::shared_mutex> lock(mutex);
-			auto it = map.find(id);
-			if (it != map.end())
-				pSmallObjAllocator = &it->second;
-		}
-		if (!pSmallObjAllocator)
-		{
-			std::unique_lock<std::shared_mutex> lock(mutex);
-			pSmallObjAllocator = &map[id];
-		}
-		return pSmallObjAllocator;
+		return &PoolAllocator::GetInstance();
 	}
 
 	static void* alloc(size_t size, bool nothrow = false)

@@ -4,6 +4,7 @@
 
 #include <iostream>
 #include <chrono>
+#include <thread>
 #include <windows.h>
 #include <psapi.h>
 #include "soalloc.h"
@@ -68,6 +69,25 @@ soalloc
 29618 msec.
 new calls: 50008182
 delete calls: 49991818
+*/
+
+/* thread_local
+standard new:           poolalloc:
+27905 msec.             46757 msec.
+new calls: 50008182     new calls: 50008182
+delete calls: 49991818  delete calls: 49991818
+
+28300 msec.             46759 msec.
+new calls: 50008182     new calls: 50008182
+delete calls: 49991818  delete calls: 49991818
+
+28328 msec.             46859 msec.
+new calls: 50008182     new calls: 50008182
+delete calls: 49991818  delete calls: 49991818
+
+28495 msec.             47144 msec.
+new calls: 50008182     new calls: 50008182
+delete calls: 49991818  delete calls: 49991818
 */
 
 /*#pragma pack(push,1)*/
