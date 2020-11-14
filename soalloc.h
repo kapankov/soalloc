@@ -17,14 +17,17 @@
 #include <vector>
 #include <map>
 
+constexpr size_t kDefaultChunkSize = 65536;
+// объекты размером более kMaxSmallObjectSize будут выделяться через стандартный new/delete
+constexpr size_t kMaxSmallObjectSize = 256;
 
-#ifndef DEFAULT_CHUNK_SIZE
+/*#ifndef DEFAULT_CHUNK_SIZE
 #define DEFAULT_CHUNK_SIZE 4096
 #endif
 
 #ifndef MAX_SMALL_OBJECT_SIZE
 #define MAX_SMALL_OBJECT_SIZE 256
-#endif
+#endif*/
 
 ////////////////////////////////////////////////////////////////////////////////
 // class FixedAllocator
@@ -35,25 +38,25 @@ class FixedAllocator
 {
 	struct Chunk
 	{
-		void Init(std::size_t blockSize, unsigned char blocks);
+		void Init(std::size_t blockSize, unsigned short blocks);
 
 		void* Allocate(std::size_t blockSize);
 
 		void Deallocate(void* p, std::size_t blockSize);
 
 
-		void Reset(std::size_t blockSize, unsigned char blocks);
+		void Reset(std::size_t blockSize, unsigned short blocks);
 
 		void Release();
 		unsigned char* m_pData;
-		unsigned char m_firstAvailableBlock;
-		unsigned char m_blocksAvailable;
+		unsigned short m_firstAvailableBlock;
+		unsigned short m_blocksAvailable;
 	};
 	void DoDeallocate(void* p);
 	Chunk* VicinityFind(void* p);
 
 	std::size_t blockSize_;
-	unsigned char numBlocks_;
+	unsigned short numBlocks_;
 	typedef std::vector<Chunk> Chunks;
 	Chunks chunks_;
 	Chunk* allocChunk_;
@@ -90,8 +93,8 @@ class SmallObjAllocator
 {
 public:
 	SmallObjAllocator(
-		std::size_t chunkSize = DEFAULT_CHUNK_SIZE,
-		std::size_t maxObjectSize = MAX_SMALL_OBJECT_SIZE);
+		std::size_t chunkSize = kDefaultChunkSize,
+		std::size_t maxObjectSize = kMaxSmallObjectSize);
 
 	void* Allocate(std::size_t numBytes);
 	void Deallocate(void* p, std::size_t size);

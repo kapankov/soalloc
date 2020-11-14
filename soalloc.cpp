@@ -11,7 +11,7 @@
 // Initializes a chunk object
 ////////////////////////////////////////////////////////////////////////////////
 
-void FixedAllocator::Chunk::Init(std::size_t blockSize, unsigned char blocks)
+void FixedAllocator::Chunk::Init(std::size_t blockSize, unsigned short blocks)
 {
 	assert(blockSize > 0);
 	assert(blocks > 0);
@@ -30,7 +30,7 @@ void FixedAllocator::Chunk::Init(std::size_t blockSize, unsigned char blocks)
 // Clears an already allocated chunk
 ////////////////////////////////////////////////////////////////////////////////
 
-void FixedAllocator::Chunk::Reset(std::size_t blockSize, unsigned char blocks)
+void FixedAllocator::Chunk::Reset(std::size_t blockSize, unsigned short blocks)
 {
 	assert(blockSize > 0);
 	assert(blocks > 0);
@@ -40,10 +40,10 @@ void FixedAllocator::Chunk::Reset(std::size_t blockSize, unsigned char blocks)
 	m_firstAvailableBlock = 0;
 	m_blocksAvailable = blocks;
 
-	unsigned char i = 0;
+	unsigned short i = 0;
 	for (unsigned char* p = m_pData; i != blocks; p += blockSize)
 	{
-		*p = ++i;
+		*reinterpret_cast<unsigned short*>(p) = ++i;
 	}
 }
 
@@ -91,8 +91,8 @@ void FixedAllocator::Chunk::Deallocate(void* p, std::size_t blockSize)
 	// Alignment check
 	assert((toRelease - m_pData) % blockSize == 0);
 
-	*toRelease = m_firstAvailableBlock;
-	m_firstAvailableBlock = static_cast<unsigned char>(
+	*reinterpret_cast<unsigned short*>(toRelease) = m_firstAvailableBlock;
+	m_firstAvailableBlock = static_cast<unsigned short>(
 		(toRelease - m_pData) / blockSize);
 	// Truncation check
 	assert(m_firstAvailableBlock == (toRelease - m_pData) / blockSize);
@@ -114,12 +114,7 @@ FixedAllocator::FixedAllocator(std::size_t blockSize)
 
 	prev_ = next_ = this;
 
-	std::size_t numBlocks = DEFAULT_CHUNK_SIZE / blockSize;
-	if (numBlocks > UCHAR_MAX) numBlocks = UCHAR_MAX;
-	else if (numBlocks == 0) numBlocks = 8 * blockSize;
-
-	numBlocks_ = static_cast<unsigned char>(numBlocks);
-	assert(numBlocks_ == numBlocks);
+	numBlocks_ = static_cast<unsigned short>(blockSize>1 ? (kDefaultChunkSize - sizeof(void*) * 2) / blockSize : UCHAR_MAX);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -36,60 +36,6 @@ private:
 	std::chrono::high_resolution_clock::time_point reset_time;
 };
 
-/* standard: 100 000
-WorkingSetSize: 6746112
-23.6573 msec.
-1 000 000
-WorkingSetSize: 42962944
-159.186 msec.
-
-soalloc: 100 000
-WorkingSetSize: 5414912
-23.0391 msec.
-1 000 000
-WorkingSetSize: 27582464
-381.049 msec.
-
-Optimizations:
-WorkingSetSize: 27561984
-183.352 msec.
-
-safe-thread (mutex):
-WorkingSetSize: 27561984
-287 msec.
-*/
-
-/* test2
-standard:
-11570 msec.
-new calls: 50008182
-delete calls: 49991818
-
-soalloc
-29618 msec.
-new calls: 50008182
-delete calls: 49991818
-*/
-
-/* thread_local
-standard new:           poolalloc:
-27905 msec.             46757 msec.
-new calls: 50008182     new calls: 50008182
-delete calls: 49991818  delete calls: 49991818
-
-28300 msec.             46759 msec.
-new calls: 50008182     new calls: 50008182
-delete calls: 49991818  delete calls: 49991818
-
-28328 msec.             46859 msec.
-new calls: 50008182     new calls: 50008182
-delete calls: 49991818  delete calls: 49991818
-
-28495 msec.             47144 msec.
-new calls: 50008182     new calls: 50008182
-delete calls: 49991818  delete calls: 49991818
-*/
-
 /*#pragma pack(push,1)*/
 struct foo: public soalloc<foo>
 {
